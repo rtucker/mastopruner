@@ -61,6 +61,7 @@ def get_mastodon(credentials, config):
     # Log in
     if not config.has_option('mastodon', 'access_token'):
         mastodon = Mastodon(
+                    ratelimit_method='pace',
                     client_id=credentials.get('mastodon', 'client_key'),
                     client_secret=credentials.get('mastodon', 'client_secret'),
                     api_base_url=credentials.get('mastodon', 'instance'))
@@ -78,7 +79,8 @@ def get_mastodon(credentials, config):
             access_token=config.get('mastodon', 'access_token'))
 
 
-def status_iter(m, limit=20, min_days=0, tags=[], include_favorites=True):
+def status_iter(m, limit=20, min_days=0, tags=[], include_favorites=True,
+                include_public=True):
     me = m.account_verify_credentials()
     max_id = None
     min_td = datetime.timedelta(days=min_days)
@@ -98,10 +100,11 @@ def status_iter(m, limit=20, min_days=0, tags=[], include_favorites=True):
                 max_id = s.id
 
             td = datetime.datetime.now(tz=dateutil.tz.tzutc()) - s.created_at
-            print("Considering: %d (%s) td=%s vs %s" % (s.id, s.created_at, td, min_td))
+            print("Considering: %d (%s) pinned=%s td=%s vs %s" % (s.id, s.created_at, None, td, min_td))
 
             candidate = td > min_td
             candidate = candidate and (include_favorites or (s.favourites_count == 0 and s.reblogs_count == 0))
+            #candidate = candidate and not s.pinned
 
             if candidate and len(tags) > 0:
                 tag_found = False
@@ -117,13 +120,9 @@ def status_iter(m, limit=20, min_days=0, tags=[], include_favorites=True):
 
 
 def cleanup_old(m, min_days=30, tags=[]):
-    import random
-
     for s in status_iter(m, min_days=min_days, tags=tags, include_favorites=True, limit=20000):
-        if random.random() < 0.80:
-            print("Deleting status: %d" % s.id)
-            m.status_delete(s)
-            time.sleep(1)
+        print("Deleting status: %d" % s.id)
+        m.status_delete(s)
 
 
 def main():
@@ -132,7 +131,7 @@ def main():
 
     masto = get_mastodon(creds, cfg)
 
-    cleanup_old(masto, min_days=120)
+    cleanup_old(masto, min_days=90)
 
 
 main()
